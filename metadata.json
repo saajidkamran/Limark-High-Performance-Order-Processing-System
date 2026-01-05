@@ -1,0 +1,5 @@
+{
+  "name": "Limark High-Performance Order System",
+  "description": "A high-performance order processing dashboard capable of handling 10,000+ concurrent records with sub-200ms latency, featuring real-time analytics, virtualization, and stress testing capabilities.",
+  "requestFramePermissions": []
+}
