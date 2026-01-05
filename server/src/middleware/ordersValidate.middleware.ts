@@ -1,6 +1,9 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { Order } from '../types/order';
 
+//TODO :move to env
+const MAX_ORDERS_PER_REQUEST = 1000;
+
 /**
  * Pure function: Validates input shape - checks if body is a valid array of orders
  */
@@ -62,6 +65,7 @@ export const validateOrdersInput = (
 /**
  * Middleware: Validates orders batch input shape
  */
+
 export const validateOrdersBatchMiddleware = async (
   request: FastifyRequest,
   reply: FastifyReply
@@ -73,7 +77,12 @@ export const validateOrdersBatchMiddleware = async (
     return;
   }
 
-  // Attach validated orders to request for use in route handler
+  if (validation.orders && validation.orders.length > MAX_ORDERS_PER_REQUEST) {
+    reply.code(413).send({ 
+      message: `Maximum ${MAX_ORDERS_PER_REQUEST} orders allowed per request` 
+    });
+    return;
+  }
+
   (request as any).validatedOrders = validation.orders;
 };
-
