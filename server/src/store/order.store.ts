@@ -28,4 +28,8 @@ export const OrderStore = {
   getAll() {
     return Array.from(orders.values());
   },
+
+  clear() {
+    orders.clear();
+  },
 };
