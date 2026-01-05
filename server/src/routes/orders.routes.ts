@@ -3,18 +3,20 @@ import { Order } from '../types/order';
 import { processOrdersBatch } from '../services/order.service';
 import { OrderStore } from '../store/order.store';
 import { validateOrdersBatchMiddleware } from '../middleware/ordersValidate.middleware';
+import { idempotencyMiddleware, IdempotentRequest } from '../middleware/idempotency.middleware';
+import { IdempotencyStore } from '../store/idempotency.store';
 
 // Extend FastifyRequest type to include validatedOrders
-interface BatchRequest extends FastifyRequest {
+interface BatchRequest extends IdempotentRequest {
   validatedOrders?: Order[];
 }
 
 export default async function ordersRoutes(app: FastifyInstance) {
-  // Batch insert orders with proper batching
+  // Batch insert orders with proper batching and idempotency
   app.post(
     '/batch',
     {
-      preHandler: validateOrdersBatchMiddleware,
+      preHandler: [idempotencyMiddleware, validateOrdersBatchMiddleware],
     },
     async (req: BatchRequest, reply) => {
       const orders = req.validatedOrders!;
@@ -23,28 +25,45 @@ export default async function ordersRoutes(app: FastifyInstance) {
         // Process orders in batches - uses BATCH_SIZE from env (service handles validation)
         const result = await processOrdersBatch(orders);
 
-        return reply.code(201).send({
+        const response = {
           success: true,
           total: orders.length,
           processed: result.totalProcessed,
           failed: result.totalFailed,
           batches: result.batchResults.length,
           batchResults: result.batchResults,
-        });
+        };
+
+        // Cache response with idempotency key if present
+        if (req.idempotencyKey) {
+          IdempotencyStore.set(req.idempotencyKey, response, 201);
+        }
+
+        return reply.code(201).send(response);
       } catch (error) {
         app.log.error(error);
 
-        // Handle batch size validation errors from service
-        if (error instanceof Error && error.message.includes('batch size')) {
-          return reply.code(400).send({
-            message: error.message,
-          });
-        }
-
-        return reply.code(500).send({
+        let statusCode = 500;
+        let errorResponse: { message: string; error?: string } = {
           message: 'Failed to process batch',
           error: error instanceof Error ? error.message : 'Unknown error',
-        });
+        };
+
+        // Handle batch size validation errors from service
+        if (error instanceof Error && error.message.includes('batch size')) {
+          statusCode = 400;
+          errorResponse = {
+            message: error.message,
+          };
+        }
+
+        // Cache error response with idempotency key if present
+        // This ensures retries get the same error response
+        if (req.idempotencyKey) {
+          IdempotencyStore.set(req.idempotencyKey, errorResponse, statusCode);
+        }
+
+        return reply.code(statusCode).send(errorResponse);
       }
     }
   );
