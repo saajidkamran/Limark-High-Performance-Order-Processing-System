@@ -1,10 +1,15 @@
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { Order } from '../types/order';
-import { processOrdersBatch } from '../services/order.service';
-import { OrderStore } from '../store/order.store';
+import { 
+  processOrdersBatch, 
+  getOrderById, 
+  updateOrderStatus,
+  cacheOrdersAfterBatch 
+} from '../services/order.service';
 import { validateOrdersBatchMiddleware } from '../middleware/ordersValidate.middleware';
 import { idempotencyMiddleware, IdempotentRequest } from '../middleware/idempotency.middleware';
 import { IdempotencyStore } from '../store/idempotency.store';
+import { validateOrderIdMiddleware } from '../middleware/validateId.middleware';
 
 // Extend FastifyRequest type to include validatedOrders
 interface BatchRequest extends IdempotentRequest {
@@ -24,6 +29,9 @@ export default async function ordersRoutes(app: FastifyInstance) {
       try {
         // Process orders in batches - uses BATCH_SIZE from env (service handles validation)
         const result = await processOrdersBatch(orders);
+
+        // Cache newly created orders for GET requests (handled in service)
+        cacheOrdersAfterBatch(orders);
 
         const response = {
           success: true,
@@ -68,22 +76,45 @@ export default async function ordersRoutes(app: FastifyInstance) {
     }
   );
 
-  // Get order by ID
-  app.get('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const order = OrderStore.getById(id);
-    if (!order) return reply.code(404).send({ message: 'Not found' });
-    return order;
-  });
+  // Get order by ID (caching handled in service)
+  app.get(
+    '/:id',
+    {
+      preHandler: [validateOrderIdMiddleware],
+    },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      
+      const { order, cacheHit, cacheAge } = getOrderById(id);
+      
+      // Set cache headers
+      reply.header('X-Cache', cacheHit ? 'HIT' : 'MISS');
+      if (cacheAge !== undefined) {
+        reply.header('X-Cache-Age', cacheAge.toString());
+      }
+      
+      if (!order) {
+        return reply.code(404).send({ message: 'Not found' });
+      }
+      
+      return order;
+    }
+  );
 
-  // Update order status
-  app.put('/:id/status', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const { status } = req.body as { status: Order['status'] };
+  // Update order status (cache invalidation handled in service)
+  app.put(
+    '/:id/status',
+    {
+      preHandler: [validateOrderIdMiddleware],
+    },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const { status } = req.body as { status: Order['status'] };
 
-    const updated = OrderStore.updateStatus(id, status);
-    if (!updated) return reply.code(404).send({ message: 'Not found' });
+      const updated = updateOrderStatus(id, status);
+      if (!updated) return reply.code(404).send({ message: 'Not found' });
 
-    return updated;
-  });
+      return updated;
+    }
+  );
 }

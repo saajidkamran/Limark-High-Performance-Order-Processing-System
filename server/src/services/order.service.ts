@@ -6,6 +6,7 @@ import {
   
 } from '../types/order.service';
 import { OrderStore } from '../store/order.store';
+import { OrderCacheStore } from '../store/cache/order.store';
 import { validateOrder, validateBatchSize } from '../validators/order.validator';
 import { splitIntoBatches, aggregateBatchResults, calculateProgress } from '../utils/batch.utils';
 
@@ -102,5 +103,68 @@ export const processOrdersBatch = async (
     totalFailed,
     batchResults,
   };
+};
+
+/**
+ * Get order by ID with caching
+ * Returns order and cache metadata for HTTP headers
+ */
+export const getOrderById = (id: string): { 
+  order: Order | null; 
+  cacheHit: boolean; 
+  cacheAge?: number;
+} => {
+  // Check cache first
+  const cachedOrder = OrderCacheStore.get(id);
+  if (cachedOrder) {
+    const cacheAge = OrderCacheStore.getAge(id);
+    return {
+      order: cachedOrder,
+      cacheHit: true,
+      cacheAge: cacheAge || undefined,
+    };
+  }
+
+  // Cache miss - get from store
+  const order = OrderStore.getById(id);
+  if (order) {
+    // Cache the order for future requests
+    OrderCacheStore.set(id, order);
+  }
+
+  return {
+    order: order || null,
+    cacheHit: false,
+  };
+};
+
+/**
+ * Update order status with cache invalidation
+ */
+export const updateOrderStatus = (
+  id: string,
+  status: Order['status']
+): Order | null => {
+  const updated = OrderStore.updateStatus(id, status);
+  
+  if (updated) {
+    // Invalidate old cache and cache the updated order
+    OrderCacheStore.invalidate(id);
+    OrderCacheStore.set(id, updated);
+  }
+  
+  return updated;
+};
+
+/**
+ * Cache orders after batch processing
+ */
+export const cacheOrdersAfterBatch = (orders: readonly Order[]): void => {
+  orders.forEach((order) => {
+    const cachedOrder = OrderStore.getById(order.id);
+    if (cachedOrder) {
+      OrderCacheStore.set(order.id, cachedOrder);
+    }
+  });
 };
 
