@@ -1,10 +1,18 @@
 import { Order } from '../types/order';
-import { processOrder, processBatch, processOrdersBatch } from './order.service';
+import { 
+  processOrder, 
+  processBatch, 
+  processOrdersBatch,
+  getOrderById,
+  updateOrderStatus
+} from './order.service';
 import { OrderStore } from '../store/order.store';
+import { OrderCacheStore } from '../store/cache/order.store';
 
 describe('Order Service - Critical Batch Processing Tests', () => {
   beforeEach(() => {
     OrderStore.clear();
+    OrderCacheStore.clear();
   });
   const createValidOrder = (id: string, overrides?: Partial<Order>): Order => ({
     id,
@@ -113,6 +121,78 @@ describe('Order Service - Critical Batch Processing Tests', () => {
 
       await expect(processOrdersBatch(orders, 0)).rejects.toThrow();
       await expect(processOrdersBatch(orders, 1001)).rejects.toThrow();
+    });
+  });
+
+  describe('getOrderById - Caching Scenarios', () => {
+    it('should return order from DB on first request', () => {
+      const order = createValidOrder('cache-test-1');
+      OrderStore.bulkInsert([order]);
+
+      const result = getOrderById('cache-test-1');
+
+      expect(result.order).toEqual(order);
+      expect(result.cacheHit).toBe(false); // First request = cache miss
+      expect(result.cacheAge).toBeUndefined();
+    });
+
+    it('should return order from cache on second request', () => {
+      const order = createValidOrder('cache-test-2');
+      OrderStore.bulkInsert([order]);
+
+      // First request - should be from DB
+      const firstResult = getOrderById('cache-test-2');
+      expect(firstResult.cacheHit).toBe(false);
+      expect(firstResult.order).toEqual(order);
+
+      // Second request - should be from cache
+      const secondResult = getOrderById('cache-test-2');
+      expect(secondResult.cacheHit).toBe(true);
+      expect(secondResult.order).toEqual(order);
+      expect(secondResult.cacheAge).toBeDefined();
+      expect(secondResult.cacheAge).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should return 404 (null) for missing order', () => {
+      const result = getOrderById('non-existent-order');
+
+      expect(result.order).toBeNull();
+      expect(result.cacheHit).toBe(false);
+      expect(result.cacheAge).toBeUndefined();
+    });
+  });
+
+  describe('updateOrderStatus - Cache Invalidation', () => {
+    it('should invalidate cache after status update', () => {
+      const order = createValidOrder('cache-invalidation-test', { status: 'PENDING' });
+      OrderStore.bulkInsert([order]);
+
+      // First request - cache the order
+      const firstResult = getOrderById('cache-invalidation-test');
+      expect(firstResult.cacheHit).toBe(false);
+      expect(firstResult.order?.status).toBe('PENDING');
+
+      // Second request - should be from cache
+      const secondResult = getOrderById('cache-invalidation-test');
+      expect(secondResult.cacheHit).toBe(true);
+      expect(secondResult.order?.status).toBe('PENDING');
+
+      // Update order status - this should invalidate cache
+      const updated = updateOrderStatus('cache-invalidation-test', 'COMPLETED');
+      expect(updated).not.toBeNull();
+      expect(updated?.status).toBe('COMPLETED');
+
+      // Third request - should be from DB (cache was invalidated and re-cached)
+      // Since updateOrderStatus re-caches immediately, it should be a cache hit
+      const thirdResult = getOrderById('cache-invalidation-test');
+      expect(thirdResult.order?.status).toBe('COMPLETED');
+      // Cache was invalidated and immediately re-cached, so it's a hit with fresh data
+      expect(thirdResult.cacheHit).toBe(true);
+    });
+
+    it('should return null when updating non-existent order', () => {
+      const result = updateOrderStatus('non-existent', 'COMPLETED');
+      expect(result).toBeNull();
     });
   });
 });
