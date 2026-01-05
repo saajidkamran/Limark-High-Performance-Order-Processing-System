@@ -10,19 +10,8 @@ import { validateOrder, validateBatchSize } from '../validators/order.validator'
 import { splitIntoBatches, aggregateBatchResults, calculateProgress } from '../utils/batch.utils';
 
 /**
- * Helper function: Compares two orders for equality (excluding timestamps that may differ)
- */
-const areOrdersEqual = (order1: Order, order2: Order): boolean => {
-  return (
-    order1.id === order2.id &&
-    order1.status === order2.status &&
-    order1.amount === order2.amount
-  );
-};
-
-/**
  * Pure function: Processes a single order and returns result
- * Idempotent: If order already exists with identical data, returns success without re-processing
+ * Note: Idempotency is handled at the request level via idempotency middleware
  */
 export const processOrder = (order: Order): ProcessResult => {
   if (!validateOrder(order)) {
@@ -34,26 +23,8 @@ export const processOrder = (order: Order): ProcessResult => {
   }
 
   try {
-    // Idempotency check: if order already exists
-    const existingOrder = OrderStore.getById(order.id);
-    
-    if (existingOrder) {
-      // If identical, return success without re-processing (idempotent behavior)
-      if (areOrdersEqual(existingOrder, order)) {
-        return {
-          success: true,
-          order: existingOrder,
-        };
-      }
-      // If different, reject to prevent accidental overwrites
-      return {
-        success: false,
-        order,
-        error: `Order ${order.id}: Already exists with different data`,
-      };
-    }
-    
-    // Order doesn't exist, process normally
+    // Insert order into store
+    // Idempotency is handled at request level, so we don't check for duplicates here
     OrderStore.bulkInsert([order]);
     return {
       success: true,
