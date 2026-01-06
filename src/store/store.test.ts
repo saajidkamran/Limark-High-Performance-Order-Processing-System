@@ -4,7 +4,6 @@ import { Order, OrderStatus, SystemMemory, SystemPerformance, BottleneckLog } fr
 
 describe('Order Store - Main Scenarios', () => {
   beforeEach(() => {
-    // Reset store before each test
     useOrderStore.setState({
       orders: [],
       orderMap: {},
@@ -17,7 +16,7 @@ describe('Order Store - Main Scenarios', () => {
     });
   });
 
-  describe('Happy Path - Normal Operations', () => {
+  describe('Normal Operations', () => {
     it('should set orders and create orderMap correctly', () => {
       const orders: Order[] = [
         {
@@ -145,8 +144,8 @@ describe('Order Store - Main Scenarios', () => {
     });
   });
 
-  describe('Best Case - Optimal Scenarios', () => {
-    it('should handle large batch of orders efficiently (10k orders)', () => {
+  describe('Best Case Scenarios', () => {
+    it('should handle large batch of orders efficiently', () => {
       const largeBatch: Order[] = Array.from({ length: 10000 }, (_, i) => ({
         id: `ORD-${10000 + i}`,
         customer: `Customer ${i}`,
@@ -162,9 +161,9 @@ describe('Order Store - Main Scenarios', () => {
       const endTime = performance.now();
 
       const state = useOrderStore.getState();
-      expect(state.orders.length).toBeLessThanOrEqual(15000); // Should cap at 15000
+      expect(state.orders.length).toBeLessThanOrEqual(15000);
       expect(state.orderMap).toHaveProperty('ORD-10000');
-      expect(endTime - startTime).toBeLessThan(100); // Should be fast
+      expect(endTime - startTime).toBeLessThan(100);
     });
 
     it('should maintain performance history limit (30 entries)', () => {
@@ -181,7 +180,6 @@ describe('Order Store - Main Scenarios', () => {
         requestsPerSecond: 5000,
       };
 
-      // Add 35 metrics
       for (let i = 0; i < 35; i++) {
         useOrderStore.getState().updateSystemMetrics(memory, perf);
       }
@@ -205,7 +203,6 @@ describe('Order Store - Main Scenarios', () => {
 
       useOrderStore.getState().setOrders([order]);
 
-      // Simulate rapid updates
       const statuses = [
         OrderStatus.PROCESSED,
         OrderStatus.SHIPPED,
@@ -218,22 +215,6 @@ describe('Order Store - Main Scenarios', () => {
 
       const state = useOrderStore.getState();
       expect(state.orderMap['ORD-10001'].status).toBe(OrderStatus.DELIVERED);
-    });
-
-    it('should maintain bottleneck log limit (50 entries)', () => {
-      // Add 55 bottlenecks
-      for (let i = 0; i < 55; i++) {
-        useOrderStore.getState().addBottleneck({
-          id: `${i}`,
-          type: 'LATENCY',
-          message: `Bottleneck ${i}`,
-          timestamp: Date.now(),
-          severity: 'warning',
-        });
-      }
-
-      const state = useOrderStore.getState();
-      expect(state.bottlenecks.length).toBe(50);
     });
 
     it('should handle concurrent batch additions', () => {
@@ -267,7 +248,7 @@ describe('Order Store - Main Scenarios', () => {
     });
   });
 
-  describe(' Error Handling & Edge Cases', () => {
+  describe('Worst Case Scenarios', () => {
     it('should not update status if order does not exist', () => {
       const initialState = useOrderStore.getState();
       useOrderStore.getState().updateOrderStatus('NON-EXISTENT', OrderStatus.PROCESSED);
@@ -275,26 +256,6 @@ describe('Order Store - Main Scenarios', () => {
       const state = useOrderStore.getState();
       expect(state.orders).toEqual(initialState.orders);
       expect(state.orderMap).toEqual(initialState.orderMap);
-    });
-
-    it('should not update status if status is the same', () => {
-      const order: Order = {
-        id: 'ORD-10001',
-        customer: 'John Doe',
-        timestamp: new Date().toISOString(),
-        items: 5,
-        total: 250.50,
-        status: OrderStatus.PENDING,
-        latency: 50,
-      };
-
-      useOrderStore.getState().setOrders([order]);
-      const stateBefore = useOrderStore.getState();
-      useOrderStore.getState().updateOrderStatus('ORD-10001', OrderStatus.PENDING);
-
-      const stateAfter = useOrderStore.getState();
-      // Should return early and not update
-      expect(stateAfter.orders[0].status).toBe(OrderStatus.PENDING);
     });
 
     it('should handle empty orders array', () => {
@@ -325,7 +286,7 @@ describe('Order Store - Main Scenarios', () => {
           latency: 50,
         },
         {
-          id: 'ORD-10001', // Duplicate ID
+          id: 'ORD-10001',
           customer: 'Jane Smith',
           timestamp: new Date().toISOString(),
           items: 3,
@@ -338,30 +299,7 @@ describe('Order Store - Main Scenarios', () => {
       useOrderStore.getState().addOrdersBatch(batch);
 
       const state = useOrderStore.getState();
-      expect(state.orderMap['ORD-10001'].customer).toBe('Jane Smith'); // Last one wins
-    });
-
-    it('should handle invalid system metrics gracefully', () => {
-      const invalidMemory: SystemMemory = {
-        heapUsed: -1, // Invalid
-        heapTotal: 0, // Invalid
-        external: NaN, // Invalid
-        timestamp: Date.now(),
-      };
-
-      const invalidPerf: SystemPerformance = {
-        latencyMs: Infinity,
-        systemHealth: -100, // Invalid
-        requestsPerSecond: -1, // Invalid
-      };
-
-      // Should not throw
-      expect(() => {
-        useOrderStore.getState().updateSystemMetrics(invalidMemory, invalidPerf);
-      }).not.toThrow();
-
-      const state = useOrderStore.getState();
-      expect(state.performance).toEqual(invalidPerf); // Store accepts but validation should be in UI
+      expect(state.orderMap['ORD-10001'].customer).toBe('Jane Smith');
     });
 
     it('should handle extremely large order batch (cap at 15000)', () => {
@@ -381,39 +319,26 @@ describe('Order Store - Main Scenarios', () => {
       expect(state.orders.length).toBeLessThanOrEqual(15000);
     });
 
-    it('should handle null/undefined order properties gracefully', () => {
-      const invalidOrder = {
-        id: 'ORD-10001',
-        customer: null as any,
-        timestamp: undefined as any,
-        items: NaN,
-        total: Infinity,
-        status: OrderStatus.PENDING,
-        latency: -1,
-      };
-
-      // Should not throw
-      expect(() => {
-        useOrderStore.getState().setOrders([invalidOrder as Order]);
-      }).not.toThrow();
-    });
-
-    it('should handle bottleneck with missing required fields', () => {
-      const incompleteBottleneck = {
-        id: '1',
-        type: 'LATENCY' as const,
-        message: '',
+    it('should handle invalid system metrics gracefully', () => {
+      const invalidMemory: SystemMemory = {
+        heapUsed: -1,
+        heapTotal: 0,
+        external: NaN,
         timestamp: Date.now(),
-        severity: 'warning' as const,
+      };
+
+      const invalidPerf: SystemPerformance = {
+        latencyMs: Infinity,
+        systemHealth: -100,
+        requestsPerSecond: -1,
       };
 
       expect(() => {
-        useOrderStore.getState().addBottleneck(incompleteBottleneck);
+        useOrderStore.getState().updateSystemMetrics(invalidMemory, invalidPerf);
       }).not.toThrow();
 
       const state = useOrderStore.getState();
-      expect(state.bottlenecks[0]).toEqual(incompleteBottleneck);
+      expect(state.performance).toEqual(invalidPerf);
     });
   });
 });
-

@@ -1,20 +1,24 @@
-import { Order } from '../types/order';
+import { Order } from "../types/order";
 import {
   BatchProcessResult,
   BatchResult,
   ProcessResult,
-  
-} from '../types/order.service';
-import { OrderStore } from '../store/order.store';
-import { OrderCacheStore } from '../store/cache/order.store';
-import { validateOrder, validateBatchSize } from '../validators/order.validator';
-import { splitIntoBatches, aggregateBatchResults, calculateProgress } from '../utils/batch.utils';
-import { broadcastOrderCreated, broadcastOrderStatusChanged } from './stream.service';
+} from "../types/order.service";
+import { OrderStore } from "../store/order.store";
+import { OrderCacheStore } from "../store/cache/order.store";
+import {
+  validateOrder,
+  validateBatchSize,
+} from "../validators/order.validator";
+import {
+  splitIntoBatches,
+  aggregateBatchResults,
+} from "../utils/batch.utils";
+import {
+  broadcastOrderCreated,
+  broadcastOrderStatusChanged,
+} from "./stream.service";
 
-/**
- * Pure function: Processes a single order and returns result
- * Note: Idempotency is handled at the request level via idempotency middleware
- */
 export const processOrder = (order: Order): ProcessResult => {
   if (!validateOrder(order)) {
     return {
@@ -25,19 +29,17 @@ export const processOrder = (order: Order): ProcessResult => {
   }
 
   try {
-    // Insert order into store
-    // Idempotency is handled at request level, so we don't check for duplicates here
     OrderStore.bulkInsert([order]);
-    
-    // Broadcast order created event for SSE
+
     broadcastOrderCreated(order);
-    
+
     return {
       success: true,
       order,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     return {
       success: false,
       order,
@@ -46,9 +48,6 @@ export const processOrder = (order: Order): ProcessResult => {
   }
 };
 
-/**
- * Pure function: Processes a batch of orders using functional composition
- */
 export const processBatch = async (
   batch: readonly Order[],
   batchIndex: number
@@ -70,33 +69,27 @@ export const processBatch = async (
   };
 };
 
-/**
- * Higher-order function: Sequential batch processor
- */
 const processBatchesSequentially = async (
   batches: readonly Order[][]
 ): Promise<readonly BatchResult[]> => {
   const results: BatchResult[] = [];
-  
+
   for (const [index, batch] of batches.entries()) {
     const result = await processBatch(batch, index);
     results.push(result);
   }
-  
+
   return results;
 };
 
-/**
- * Main function: Process orders in batches with validation
- */
 export const processOrdersBatch = async (
   orders: readonly Order[],
   batchSize?: number
 ): Promise<BatchProcessResult> => {
   const validation = validateBatchSize(batchSize);
-  
+
   if (!validation.valid) {
-    throw new Error(validation.error || 'Invalid batch size');
+    throw new Error(validation.error || "Invalid batch size");
   }
 
   const batches = splitIntoBatches(orders, validation.batchSize);
@@ -110,16 +103,14 @@ export const processOrdersBatch = async (
   };
 };
 
-/**
- * Get order by ID with caching
- * Returns order and cache metadata for HTTP headers
- */
-export const getOrderById = (id: string): { 
-  order: Order | null; 
-  cacheHit: boolean; 
+export const getOrderById = (
+  id: string
+): {
+  order: Order | null;
+  cacheHit: boolean;
   cacheAge?: number;
 } => {
-  // Check cache first
+  // Check cache
   const cachedOrder = OrderCacheStore.get(id);
   if (cachedOrder) {
     const cacheAge = OrderCacheStore.getAge(id);
@@ -130,10 +121,10 @@ export const getOrderById = (id: string): {
     };
   }
 
-  // Cache miss - get from store
+  // Cache miss
   const order = OrderStore.getById(id);
   if (order) {
-    // Cache the order for future requests
+    // Cache the order
     OrderCacheStore.set(id, order);
   }
 
@@ -143,30 +134,24 @@ export const getOrderById = (id: string): {
   };
 };
 
-/**
- * Update order status with cache invalidation
- */
 export const updateOrderStatus = (
   id: string,
-  status: Order['status']
+  status: Order["status"]
 ): Order | null => {
   const updated = OrderStore.updateStatus(id, status);
-  
+
   if (updated) {
-    // Invalidate old cache and cache the updated order
+    // Invalidate old cache
     OrderCacheStore.invalidate(id);
     OrderCacheStore.set(id, updated);
-    
-    // Broadcast order status changed event for SSE
+
+    // Broadcast order status
     broadcastOrderStatusChanged(updated);
   }
-  
+
   return updated;
 };
 
-/**
- * Cache orders after batch processing
- */
 export const cacheOrdersAfterBatch = (orders: readonly Order[]): void => {
   orders.forEach((order) => {
     const cachedOrder = OrderStore.getById(order.id);
@@ -175,4 +160,3 @@ export const cacheOrdersAfterBatch = (orders: readonly Order[]): void => {
     }
   });
 };
-

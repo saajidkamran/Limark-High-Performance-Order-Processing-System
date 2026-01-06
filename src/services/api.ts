@@ -1,7 +1,7 @@
 
+import axios from 'axios';
 import { Order, OrderStatus, SystemMemory, SystemPerformance, BottleneckLog } from '../types';
 
-// In-memory data store for the mock API
 const generateInitialOrders = (count: number): Order[] => {
   return Array.from({ length: count }, (_, i) => ({
     id: `ORD-${10000 + i}`,
@@ -14,15 +14,56 @@ const generateInitialOrders = (count: number): Order[] => {
   }));
 };
 
+const generateIdempotencyKey = (): string => {
+  return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).substring(2)}`;
+};
+
 let db = generateInitialOrders(10000);
+// TODO: Move for env 
+const API_BASE_URL = 'http://localhost:3002/api';
+
+const transformToServerFormat = (order: any) => {
+  if (order.amount !== undefined && order.createdAt !== undefined) {
+    return {
+      id: order.id,
+      status: order.status,
+      amount: order.amount,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt || Date.now(),
+    };
+  }
+  return {
+    id: order.id,
+    status: order.status,
+    amount: order.total || 0,
+    createdAt: order.timestamp ? new Date(order.timestamp).getTime() : Date.now(),
+    updatedAt: Date.now(),
+  };
+};
 
 export const mockApi = {
   // 1. POST /api/orders/batch
-  async uploadBatch(count: number = 1000): Promise<Order[]> {
-    await new Promise(r => setTimeout(r, 400));
-    const newBatch = generateInitialOrders(count);
-    db = [...newBatch, ...db];
-    return newBatch;
+  async uploadBatch(ordersOrCount: Order[] | number = 1000): Promise<Order[]> {
+    const orders: Order[] = typeof ordersOrCount === 'number' 
+      ? generateInitialOrders(ordersOrCount)
+      : ordersOrCount;
+
+    const idempotencyKey = generateIdempotencyKey();
+    const serverOrders = orders.map(transformToServerFormat);
+
+    try {
+      await axios.post(`${API_BASE_URL}/orders/batch`, serverOrders, {
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+        },
+      });
+      return orders;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        throw new Error(error.response.data?.message || 'Upload failed');
+      }
+      throw new Error('Upload failed');
+    }
   },
 
   // 2. GET /api/orders/{id}
@@ -43,7 +84,6 @@ export const mockApi = {
   },
 
   // 4. GET /api/orders/stream
-  // In a real app, this would be an EventSource. Here we return the initial state.
   async getInitialOrders(): Promise<Order[]> {
     return db;
   },

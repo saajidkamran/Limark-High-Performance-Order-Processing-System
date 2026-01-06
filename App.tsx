@@ -44,15 +44,14 @@ const App: React.FC = () => {
       if (orders.length > 0) {
         const updateCount = isStressTesting ? 50 : 2;
         requestAnimationFrame(() => {
-          // Note: In a real app, this logic would happen in the Zustand store 
-          // or via a batching utility. We keep it light here for the simulation.
+          
           const statuses = Object.values(OrderStatus);
           for (let i = 0; i < updateCount; i++) {
             const randomIndex = Math.floor(Math.random() * orders.length);
             const target = orders[randomIndex];
             const nextStatus = statuses[Math.floor(Math.random() * statuses.length)];
-            // We call the store update; Zustand will batch these calls in the same tick 
-            // if triggered within a single task/rAF.
+            
+          
             useOrderStore.getState().updateOrderStatus(target.id, nextStatus);
           }
         });
