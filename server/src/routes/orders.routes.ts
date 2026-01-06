@@ -10,10 +10,21 @@ import { validateOrdersBatchMiddleware } from '../middleware/ordersValidate.midd
 import { idempotencyMiddleware, IdempotentRequest } from '../middleware/idempotency.middleware';
 import { IdempotencyStore } from '../store/idempotency.store';
 import { validateOrderIdMiddleware } from '../middleware/validateId.middleware';
+import { subscribeToOrderUpdates, setSSEHeaders } from '../services/stream.service';
+import { runStressTest } from '../services/stress-test.service';
+import { validateStressTestMiddleware } from '../middleware/stressTestValidate.middleware';
 
 // Extend FastifyRequest type to include validatedOrders
 interface BatchRequest extends IdempotentRequest {
   validatedOrders?: Order[];
+}
+
+interface StressTestRequest extends FastifyRequest {
+  validatedStressTestConfig?: {
+    orderCount: number;
+    batchSize: number;
+    concurrentBatches?: number;
+  };
 }
 
 export default async function ordersRoutes(app: FastifyInstance) {
@@ -115,6 +126,70 @@ export default async function ordersRoutes(app: FastifyInstance) {
       if (!updated) return reply.code(404).send({ message: 'Not found' });
 
       return updated;
+    }
+  );
+
+  // Real-time order updates via Server-Sent Events (SSE)
+  app.get('/stream', async (req, reply) => {
+    // Set SSE headers
+    setSSEHeaders(reply);
+    
+    // Send initial connection message
+    reply.raw.write(': connected\n\n');
+    
+    // Subscribe to order updates
+    const unsubscribe = subscribeToOrderUpdates((event) => {
+      try {
+        // Format SSE message
+        const data = JSON.stringify(event);
+        reply.raw.write(`event: ${event.type}\n`);
+        reply.raw.write(`data: ${data}\n\n`);
+      } catch (error) {
+        app.log.error({ error }, 'Error sending SSE event');
+        unsubscribe();
+      }
+    });
+
+    // Keep connection alive with heartbeat
+    const heartbeatInterval = setInterval(() => {
+      try {
+        reply.raw.write(': heartbeat\n\n');
+      } catch (error) {
+        clearInterval(heartbeatInterval);
+        unsubscribe();
+      }
+    }, 30000); // Send heartbeat every 30 seconds
+
+    // Handle client disconnect and cleanup
+    req.raw.on('close', () => {
+      clearInterval(heartbeatInterval);
+      unsubscribe();
+      reply.raw.end();
+    });
+  });
+
+  // Stress test endpoint for load testing (validation handled in middleware)
+  app.post(
+    '/stress-test',
+    {
+      preHandler: [validateStressTestMiddleware],
+    },
+    async (req: StressTestRequest, reply) => {
+      try {
+        const config = req.validatedStressTestConfig!;
+
+        // Run stress test
+        const result = await runStressTest(config);
+
+        return reply.code(200).send(result);
+      } catch (error) {
+        app.log.error({ error }, 'Stress test failed');
+
+        return reply.code(500).send({
+          message: 'Stress test failed',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
     }
   );
 }
