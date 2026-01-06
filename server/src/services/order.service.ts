@@ -9,6 +9,7 @@ import { OrderStore } from '../store/order.store';
 import { OrderCacheStore } from '../store/cache/order.store';
 import { validateOrder, validateBatchSize } from '../validators/order.validator';
 import { splitIntoBatches, aggregateBatchResults, calculateProgress } from '../utils/batch.utils';
+import { broadcastOrderCreated, broadcastOrderStatusChanged } from './stream.service';
 
 /**
  * Pure function: Processes a single order and returns result
@@ -27,6 +28,10 @@ export const processOrder = (order: Order): ProcessResult => {
     // Insert order into store
     // Idempotency is handled at request level, so we don't check for duplicates here
     OrderStore.bulkInsert([order]);
+    
+    // Broadcast order created event for SSE
+    broadcastOrderCreated(order);
+    
     return {
       success: true,
       order,
@@ -121,7 +126,7 @@ export const getOrderById = (id: string): {
     return {
       order: cachedOrder,
       cacheHit: true,
-      cacheAge: cacheAge || undefined,
+      cacheAge: cacheAge ?? undefined,
     };
   }
 
@@ -151,6 +156,9 @@ export const updateOrderStatus = (
     // Invalidate old cache and cache the updated order
     OrderCacheStore.invalidate(id);
     OrderCacheStore.set(id, updated);
+    
+    // Broadcast order status changed event for SSE
+    broadcastOrderStatusChanged(updated);
   }
   
   return updated;

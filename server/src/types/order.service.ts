@@ -1,8 +1,5 @@
 import { Order } from './order';
 
-/**
- * Service-specific types for order batch processing
- */
 
 export type BatchProcessResult = {
   readonly totalProcessed: number;
