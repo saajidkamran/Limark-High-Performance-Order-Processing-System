@@ -1,18 +1,12 @@
 import { BatchResult, Progress } from '../types/order.service';
 
-/**
- * Pure function: Splits an array into batches of specified size
- * Generic utility function - can be used with any type
- */
+
 export const splitIntoBatches = <T>(items: readonly T[], batchSize: number): readonly T[][] => {
   return Array.from({ length: Math.ceil(items.length / batchSize) }, (_, i) =>
     items.slice(i * batchSize, (i + 1) * batchSize)
   );
 };
-
-/**
- * Pure function: Reduces batch results to final totals
- */
+//  Reduces batch results to final totals
 export const aggregateBatchResults = (
   batchResults: readonly BatchResult[]
 ): { readonly totalProcessed: number; readonly totalFailed: number } => {
@@ -25,9 +19,7 @@ export const aggregateBatchResults = (
   );
 };
 
-/**
- * Pure function: Calculate progress percentage
- */
+//  Calculate progress percentage
 export const calculateProgress = (
   processedBatches: number,
   totalOrders: number,

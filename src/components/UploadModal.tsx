@@ -1,6 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Order, OrderStatus } from '../types';
+import { mockApi } from '../services/api';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -11,12 +12,14 @@ interface UploadModalProps {
 export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
   const processFile = async (file: File) => {
     setError(null);
+    setIsUploading(true);
     const reader = new FileReader();
 
     reader.onload = async (e) => {
@@ -25,7 +28,31 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
         let parsedOrders: Order[] = [];
 
         if (file.name.endsWith('.json')) {
-          parsedOrders = JSON.parse(text);
+          const rawOrders = JSON.parse(text);
+          parsedOrders = Array.isArray(rawOrders) 
+            ? rawOrders.map((order: any) => {
+                if (order.amount !== undefined && order.createdAt !== undefined) {
+                  return {
+                    id: order.id,
+                    customer: order.customer || 'Unknown Customer',
+                    timestamp: new Date(order.createdAt).toISOString(),
+                    items: order.items || 1,
+                    total: order.amount,
+                    status: order.status || OrderStatus.PENDING,
+                    latency: order.latency || 0,
+                  };
+                }
+                return {
+                  id: order.id || `UP-${Date.now()}-${Math.random()}`,
+                  customer: order.customer || 'Unknown Customer',
+                  timestamp: order.timestamp || new Date().toISOString(),
+                  items: order.items || 1,
+                  total: order.total || 0,
+                  status: order.status || OrderStatus.PENDING,
+                  latency: order.latency || 0,
+                };
+              })
+            : [];
         } else if (file.name.endsWith('.csv')) {
           const lines = text.split('\n');
           const headers = lines[0].split(',');
@@ -45,10 +72,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
           throw new Error('Unsupported file format. Please use JSON or CSV.');
         }
 
-        onUpload(parsedOrders);
+        const uploadedOrders = await mockApi.uploadBatch(parsedOrders);
+        onUpload(uploadedOrders);
         onClose();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to parse file');
+        setError(err instanceof Error ? err.message : 'Failed to upload file');
+      } finally {
+        setIsUploading(false);
       }
     };
 
@@ -79,9 +109,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all ${
-              isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'
+            onClick={() => !isUploading && fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-10 text-center transition-all ${
+              isUploading 
+                ? 'border-slate-300 bg-slate-50 cursor-not-allowed opacity-60' 
+                : isDragging 
+                  ? 'border-blue-500 bg-blue-50 cursor-pointer' 
+                  : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50 cursor-pointer'
             }`}
           >
             <input
@@ -96,9 +130,21 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
             </div>
-            <p className="text-slate-900 font-semibold">Click or drag file to upload</p>
+            <p className="text-slate-900 font-semibold">
+              {isUploading ? 'Uploading...' : 'Click or drag file to upload'}
+            </p>
             <p className="text-slate-500 text-sm mt-1">Support for JSON and CSV (max 10MB)</p>
           </div>
+
+          {isUploading && (
+            <div className="mt-4 p-3 bg-blue-50 text-blue-600 text-sm rounded-lg border border-blue-100 flex items-center">
+              <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Uploading orders with idempotency key...
+            </div>
+          )}
 
           {error && (
             <div className="mt-4 p-3 bg-rose-50 text-rose-600 text-sm rounded-lg border border-rose-100 flex items-center">

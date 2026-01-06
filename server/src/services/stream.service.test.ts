@@ -1,4 +1,4 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
+import {  FastifyReply } from 'fastify';
 import {
   subscribeToOrderUpdates,
   broadcastOrderCreated,

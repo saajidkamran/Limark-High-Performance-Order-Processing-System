@@ -1,15 +1,8 @@
-/**
- * Stream Service
- * 
- * Manages Server-Sent Events (SSE) for real-time order updates.
- * Uses an event emitter pattern to broadcast order changes to connected clients.
- */
-
-import { FastifyReply } from 'fastify';
-import { Order } from '../types/order';
+import { FastifyReply } from "fastify";
+import { Order } from "../types/order";
 
 type OrderUpdateEvent = {
-  type: 'order.created' | 'order.updated' | 'order.status_changed';
+  type: "order.created" | "order.updated" | "order.status_changed";
   order: Order;
   timestamp: number;
 };
@@ -22,9 +15,11 @@ const streamCallbacks = new Set<StreamCallback>();
 /**
  * Subscribe to order update events
  */
-export const subscribeToOrderUpdates = (callback: StreamCallback): () => void => {
+export const subscribeToOrderUpdates = (
+  callback: StreamCallback
+): (() => void) => {
   streamCallbacks.add(callback);
-  
+
   // Return unsubscribe function
   return () => {
     streamCallbacks.delete(callback);
@@ -64,7 +59,7 @@ export const clearAllSubscribers = (): void => {
  */
 export const broadcastOrderCreated = (order: Order): void => {
   broadcastOrderUpdate({
-    type: 'order.created',
+    type: "order.created",
     order,
     timestamp: Date.now(),
   });
@@ -75,7 +70,7 @@ export const broadcastOrderCreated = (order: Order): void => {
  */
 export const broadcastOrderUpdated = (order: Order): void => {
   broadcastOrderUpdate({
-    type: 'order.updated',
+    type: "order.updated",
     order,
     timestamp: Date.now(),
   });
@@ -86,7 +81,7 @@ export const broadcastOrderUpdated = (order: Order): void => {
  */
 export const broadcastOrderStatusChanged = (order: Order): void => {
   broadcastOrderUpdate({
-    type: 'order.status_changed',
+    type: "order.status_changed",
     order,
     timestamp: Date.now(),
   });
@@ -97,9 +92,8 @@ export const broadcastOrderStatusChanged = (order: Order): void => {
  * Required for Server-Sent Events to work properly
  */
 export const setSSEHeaders = (reply: FastifyReply): void => {
-  reply.raw.setHeader('Content-Type', 'text/event-stream');
-  reply.raw.setHeader('Cache-Control', 'no-cache');
-  reply.raw.setHeader('Connection', 'keep-alive');
-  reply.raw.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  reply.raw.setHeader("Content-Type", "text/event-stream");
+  reply.raw.setHeader("Cache-Control", "no-cache");
+  reply.raw.setHeader("Connection", "keep-alive");
+  reply.raw.setHeader("X-Accel-Buffering", "no");
 };
-

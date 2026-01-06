@@ -51,21 +51,6 @@ export const validateStressTestConfig = (
     };
   }
 
-  // Validate concurrentBatches (optional)
-  if (config.concurrentBatches !== undefined) {
-    if (typeof config.concurrentBatches !== 'number' || isNaN(config.concurrentBatches)) {
-      return {
-        valid: false,
-        error: 'concurrentBatches must be a number',
-      };
-    }
-    if (config.concurrentBatches < 1 || config.concurrentBatches > 10) {
-      return {
-        valid: false,
-        error: 'concurrentBatches must be between 1 and 10',
-      };
-    }
-  }
 
   return {
     valid: true,

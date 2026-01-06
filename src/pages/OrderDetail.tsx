@@ -12,14 +12,12 @@ export const OrderDetail: React.FC = () => {
   const queryClient = useQueryClient();
   const updateStoreStatus = useOrderStore(state => state.updateOrderStatus);
 
-  // Fetch single order metadata via React Query
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', id],
     queryFn: () => mockApi.getOrderById(id!),
     enabled: !!id,
   });
 
-  // Mutation for status transition
   const statusMutation = useMutation({
     mutationFn: ({ status }: { status: OrderStatus }) => mockApi.updateStatus(id!, status),
     onSuccess: (updated) => {

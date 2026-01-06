@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { getMetrics } from '../utils/metrics';
 
 export default async function systemRoutes(app: FastifyInstance) {
   app.get('/health', async () => {
@@ -12,5 +13,9 @@ export default async function systemRoutes(app: FastifyInstance) {
       heapTotal: mem.heapTotal,
       heapUsed: mem.heapUsed
     };
+  });
+
+  app.get('/performance', async () => {
+    return getMetrics();
   });
 }

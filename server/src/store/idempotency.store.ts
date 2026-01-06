@@ -1,11 +1,3 @@
-/**
- * Idempotency Store
- * 
- * Stores request responses keyed by idempotency keys to enable
- * safe request retries. Entries expire after a TTL to prevent
- * unbounded memory growth.
- */
-
 interface IdempotencyEntry {
   response: unknown;
   statusCode: number;
@@ -41,17 +33,17 @@ export const IdempotencyStore = {
    */
   get(key: string): IdempotencyEntry | null {
     const entry = idempotencyStore.get(key);
-    
+
     if (!entry) {
       return null;
     }
-    
+
     // Check if expired
     if (entry.expiresAt < Date.now()) {
       idempotencyStore.delete(key);
       return null;
     }
-    
+
     return entry;
   },
 
@@ -94,4 +86,3 @@ export const IdempotencyStore = {
     return idempotencyStore.size;
   },
 };
-

@@ -52,9 +52,9 @@ const Row = memo(({ index, style, data }: RowProps) => {
       onClick={() => navigate(`/orders/${order.id}`)}
     >
       <div className="w-32 font-mono text-xs font-medium text-slate-400 group-hover:text-blue-500 transition-colors">{order.id}</div>
-      <div className="flex-1 font-semibold text-slate-700 truncate pr-4">{order.customer}</div>
-      <div className="w-24 text-right pr-8 text-sm text-slate-500">{order.items} <span className="text-[10px] text-slate-300">items</span></div>
-      <div className="w-28 text-right font-bold pr-8 text-slate-900">${order.total.toFixed(2)}</div>
+      <div className="flex-1 font-semibold text-slate-700 truncate pr-4">{order.customer || 'N/A'}</div>
+      <div className="w-24 text-right pr-8 text-sm text-slate-500">{order.items || 0} <span className="text-[10px] text-slate-300">items</span></div>
+      <div className="w-28 text-right font-bold pr-8 text-slate-900">${(order.total || 0).toFixed(2)}</div>
       <div className="w-32 text-center"><StatusBadge status={order.status} /></div>
       <div className="w-40 flex justify-end space-x-1.5">
         <button 
@@ -73,17 +73,16 @@ const Row = memo(({ index, style, data }: RowProps) => {
     </div>
   );
 }, (prev, next) => {
-  // Custom comparison: Only re-render if the specific order data changes
   return prev.data.orders[prev.index] === next.data.orders[next.index] && prev.style === next.style;
 });
 
 interface OrderTableProps {
-  orders?: Order[]; // Optional prop for filtered orders
+  orders?: Order[]; 
 }
 
 export const OrderTable: React.FC<OrderTableProps> = memo(({ orders: propOrders }) => {
   const storeOrders = useOrderStore((state) => state.orders);
-  const orders = propOrders ?? storeOrders; // Use prop if provided, otherwise use store
+  const orders = propOrders ?? storeOrders; 
   const updateStatus = useOrderStore((state) => state.updateOrderStatus);
   const navigate = useNavigate();
 
